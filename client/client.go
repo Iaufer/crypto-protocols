@@ -1,14 +1,16 @@
 package main
 
 import (
-	"fmt"
 	"log"
 	"net"
+	"os"
 )
 
-const (
-	pkgInit = "initialization package"
-)
+func parsArg() string {
+	path := os.Args
+
+	return path[1] + " " + path[2] + " " + path[3] + " " + path[4]
+}
 
 func main() {
 	conn, err := net.Dial("tcp", "127.0.0.1:8080")
@@ -19,22 +21,7 @@ func main() {
 
 	defer conn.Close()
 
-	_, err = conn.Write([]byte(pkgInit))
+	path := parsArg()
 
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	var resp [256]byte
-
-	n, err := conn.Read(resp[:])
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	fmt.Println("Порядковый номер: ", resp[n-1])
-	fmt.Println("Зерно от сервера: ", resp[:n-1])
-
-	fmt.Println(n)
+	conn.Write([]byte(path))
 }

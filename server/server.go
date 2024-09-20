@@ -1,46 +1,103 @@
 package main
 
 import (
-	"crypto/rand"
+	"bufio"
+	"errors"
 	"fmt"
 	"log"
 	"net"
+	"os"
+	"strconv"
+	"strings"
+
+	"github.com/m1/go-generate-password/generator"
 )
 
-func generateSeed() ([]byte, error) {
-	seed := make([]byte, 8) // сколько байт зерно?
-
-	_, err := rand.Read(seed)
-	if err != nil {
-		log.Fatal(err)
-		return nil, err
+func generateSeed() string {
+	config := generator.Config{
+		Length:                     16,
+		IncludeSymbols:             false,
+		IncludeNumbers:             true,
+		IncludeLowercaseLetters:    true,
+		IncludeUppercaseLetters:    false,
+		ExcludeSimilarCharacters:   false,
+		ExcludeAmbiguousCharacters: false,
 	}
 
-	return seed, nil
+	g, _ := generator.New(&config)
+
+	seed, _ := g.Generate()
+
+	return *seed
+}
+
+func checkUser(username string) error {
+	file, err := os.OpenFile("data.csv", os.O_RDONLY, 0666)
+
+	if err != nil {
+		return err
+	}
+
+	defer file.Close()
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		row := strings.Split(scanner.Text(), " ")
+		fmt.Println(row[0], username, len(row[0]), len(username))
+		if row[0] == username {
+			return nil
+		}
+
+	}
+
+	if err := scanner.Err(); err != nil {
+		log.Fatal(err)
+	}
+
+	return errors.New("User not found")
+}
+
+func decIter(num string) string {
+	n, err := strconv.ParseInt(num, 10, 64)
+
+	if err != nil {
+		log.Fatal(err)
+	}
+	return strconv.Itoa(int(n) - 1)
+}
+
+func addUser(user []string) error {
+	file, err := os.OpenFile("data.csv", os.O_APPEND, 0666)
+	if err != nil {
+		return err
+	}
+
+	seed := generateSeed()
+
+	file.Write([]byte(user[1] + " " + user[2] + " " + decIter(user[3]) + " " + seed + "\n"))
+
+	return nil
 }
 
 func handleConnection(conn net.Conn) {
 	defer conn.Close()
 
-	var buffer [256]byte // есть ли смысл заранее, чтоыб клиент заранее передавал размер пакета инициализации?
-	n, err := conn.Read(buffer[:])
+	buffer := make([]byte, 100)
+	n, _ := conn.Read(buffer)
+
+	user := strings.Split(string(buffer[:n]), " ")
+
+	err := checkUser(user[1])
 
 	if err != nil {
-		log.Fatal(err)
+		fmt.Println("User not found")
+		err := addUser(user)
+		if err != nil {
+			log.Fatal(err)
+		}
+	} else {
+		fmt.Println("User found")
 	}
-	fmt.Println("Пакет инициализации от клиента: ", buffer[:n])
-
-	seed, err := generateSeed()
-
-	if err != nil {
-		log.Fatal(err)
-	}
-
-	// resp := fmt.Sprintf("1:%x", seed) // порядковый номер уникальный для клиента? или от чего он зависит
-	// как пережовать порядковый номер?
-	seed = append(seed, 5) // 5 порядкоый номер который бдует в конце массива
-	fmt.Println(seed)
-	conn.Write([]byte(seed))
 
 }
 
@@ -63,10 +120,6 @@ func main() {
 		}
 
 		go handleConnection(conn)
-
-		// buffer := make([]byte, 1024) // есть ли смысл клиенту передавать соклько байт в пакете инициализции?
-		// conn.Read(buffer)
-		// fmt.Println(buffer)
-		// conn.Close()
 	}
+
 }
