@@ -2,6 +2,8 @@ package main
 
 import (
 	"bufio"
+	"crypto/md5"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"log"
@@ -66,6 +68,15 @@ func decIter(num string) string {
 	return strconv.Itoa(int(n) - 1)
 }
 
+func hashPS(str string, i int64) string {
+	h := md5.New()
+	for ; i > 0; i-- {
+		h.Write([]byte(str))
+	}
+	fmt.Println("i = ", i)
+	return hex.EncodeToString(h.Sum(nil)[:8])
+}
+
 func addUser(user []string) error {
 	file, err := os.OpenFile("data.csv", os.O_APPEND, 0666)
 	if err != nil {
@@ -74,7 +85,9 @@ func addUser(user []string) error {
 
 	seed := generateSeed()
 
-	file.Write([]byte(user[1] + " " + user[2] + " " + decIter(user[3]) + " " + seed + "\n"))
+	i, _ := strconv.ParseInt(user[3], 10, 64)
+
+	file.Write([]byte(user[1] + " " + hashPS(user[2]+seed, i) + " " + decIter(user[3]) + " " + seed + "\n"))
 
 	return nil
 }
