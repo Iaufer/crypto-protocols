@@ -1,15 +1,35 @@
 package main
 
 import (
+	"crypto/md5"
+	"encoding/hex"
+	"fmt"
 	"log"
 	"net"
 	"os"
+	"strconv"
+	"strings"
 )
 
-func parsArg() string {
-	path := os.Args
+// func parsArg() string {
+// 	path := os.Args
 
-	return path[1] + " " + path[2] + " " + path[3] + " " + path[4]
+// 	return path[1] + " " + path[2] + " " + path[3] + " " + path[4]
+// }
+
+func hashPS(str, seed string, i int64) string {
+	var result string
+	for ; i > 0; i-- {
+		h := md5.New()
+		h.Write([]byte(str + seed))
+		fmt.Println([]byte(str+seed), str+seed)
+
+		hash := h.Sum(nil)[:8]
+		result = hex.EncodeToString(hash)
+		str = result
+	}
+	fmt.Println("i = ", i)
+	return result //64 бит
 }
 
 func main() {
@@ -21,7 +41,44 @@ func main() {
 
 	defer conn.Close()
 
-	path := parsArg()
+	args := os.Args
 
-	conn.Write([]byte(path))
+	if len(args) < 2 {
+		fmt.Println("Not enough arg...")
+		return
+	}
+
+	command := args[1]
+
+	switch command {
+	case "keyinit":
+		if len(args) == 3 { //auth
+			conn.Write([]byte("2 " + args[2]))
+
+			buff := make([]byte, 100)
+			n, _ := conn.Read(buff)
+
+			passwd := ""
+			fmt.Print("Enter password: ")
+			fmt.Scanln(&passwd)
+
+			num, _ := strconv.Atoi(strings.Split(string(buff), " ")[0])
+			h := hashPS(passwd, strings.Split(string(buff[:n]), " ")[1], int64(num))
+			fmt.Println(h)
+
+			conn.Write([]byte(h))
+		}
+
+		if len(args) == 5 {
+			conn.Write([]byte("0 " + args[2] + " " + args[3] + " " + args[4]))
+		}
+
+		if len(args) == 6 {
+			conn.Write([]byte("1 " + args[3] + " " + args[4] + " " + args[5]))
+		}
+
+	default:
+		fmt.Println("Errors arg...")
+	}
+	// conn.Write([]byte(path))
 }
