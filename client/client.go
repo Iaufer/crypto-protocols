@@ -22,13 +22,13 @@ func hashPS(str, seed string, i int64) string {
 	for ; i > 0; i-- {
 		h := md5.New()
 		h.Write([]byte(str + seed))
-		fmt.Println([]byte(str+seed), str+seed)
+		// fmt.Println([]byte(str+seed), str+seed)
 
 		hash := h.Sum(nil)[:8]
 		result = hex.EncodeToString(hash)
 		str = result
 	}
-	fmt.Println("i = ", i)
+	// fmt.Println("i = ", i)
 	return result //64 бит
 }
 
@@ -55,8 +55,13 @@ func main() {
 		if len(args) == 3 { //auth
 			conn.Write([]byte("2 " + args[2]))
 
-			buff := make([]byte, 100)
+			buff := make([]byte, 256)
 			n, _ := conn.Read(buff)
+
+			if strings.Split(string(buff[:n]), " ")[0] == "unreg" {
+				fmt.Println(string(buff[6:n]))
+				return
+			}
 
 			passwd := ""
 			fmt.Print("Enter password: ")
@@ -64,9 +69,12 @@ func main() {
 
 			num, _ := strconv.Atoi(strings.Split(string(buff), " ")[0])
 			h := hashPS(passwd, strings.Split(string(buff[:n]), " ")[1], int64(num))
-			fmt.Println(h)
+			// fmt.Println(num, h)
+			// fmt.Println(h)
 
 			conn.Write([]byte(h))
+			n, _ = conn.Read(buff[:])
+			fmt.Println(string(buff[:n]))
 		}
 
 		if len(args) == 5 {
@@ -75,6 +83,27 @@ func main() {
 
 		if len(args) == 6 {
 			conn.Write([]byte("1 " + args[3] + " " + args[4] + " " + args[5]))
+
+			buff := make([]byte, 256)
+			n, _ := conn.Read(buff)
+
+			if strings.Split(string(buff[:n]), " ")[0] == "unreg" {
+				fmt.Println(string(buff[6:n]))
+				return
+			}
+
+			passwd := ""
+			fmt.Print("Enter password: ")
+			fmt.Scanln(&passwd)
+
+			num, _ := strconv.Atoi(strings.Split(string(buff), " ")[0])
+			h := hashPS(passwd, strings.Split(string(buff[:n]), " ")[1], int64(num))
+			// fmt.Println(num, h)
+			// fmt.Println(h)
+
+			conn.Write([]byte(h))
+			n, _ = conn.Read(buff[:])
+			fmt.Println(string(buff[:n]))
 		}
 
 	default:

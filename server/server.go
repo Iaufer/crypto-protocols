@@ -45,7 +45,6 @@ func checkUser(username string) error {
 	scanner := bufio.NewScanner(file)
 	for scanner.Scan() {
 		row := strings.Split(scanner.Text(), " ")
-		fmt.Println(row[0], username, len(row[0]), len(username))
 		if row[0] == username {
 			return nil
 		}
@@ -83,21 +82,26 @@ func hashPS(str, seed string, i int64) string {
 }
 
 func addUser(user []string) error {
-	file, err := os.OpenFile("data.csv", os.O_APPEND, 0666)
+	file, err := os.OpenFile("data.csv", os.O_APPEND|os.O_WRONLY, 0666)
 	if err != nil {
 		return err
 	}
+
+	defer file.Close()
 
 	seed := generateSeed()
 
 	i, _ := strconv.ParseInt(user[2], 10, 64)
 
-	file.Write([]byte(user[0] + " " + hashPS(user[1], seed, i) + " " + decIter(user[2]) + " " + seed + "\n"))
+	_, err = file.Write([]byte(user[0] + " " + hashPS(user[1], seed, i) + " " + decIter(user[2]) + " " + seed + "\n"))
+	if err != nil {
+		return err
+	}
 
 	return nil
 }
 
-func updateHashCount(username, hash string) error {
+func updateHashCount(username, hash string, conn net.Conn) error {
 	file, err := os.Open("data.csv")
 	if err != nil {
 		return err
@@ -115,14 +119,23 @@ func updateHashCount(username, hash string) error {
 
 	value, exist := maps[username]
 
+	// if value[2] == "0"{//delete user
+	// 	delete(maps, username)
+	// }
+
+	// fmt.Println(maps, 	username, value)
+
 	if !exist {
 		return errors.New("El not found")
 	}
 
+	fmt.Println(value)
+
 	value[0] = hash
 	num, _ := strconv.Atoi(value[1])
-	if num <= 0 {
-		fmt.Println("Вам нужно пройти регистрацию еще раз")
+	if num == 1 {
+		// fmt.Println("Вам нужно пройти регистрацию еще раз")
+		conn.Write([]byte("ВХод выполнен успешно! N.B: Чтобы войти в следующий раз - зарегистрируйтесь"))
 		delete(maps, username)
 	} else {
 		value[1] = strconv.Itoa(num - 1)
@@ -140,7 +153,7 @@ func updateHashCount(username, hash string) error {
 	writer := bufio.NewWriter(file)
 
 	for key, value := range maps {
-		_, err := writer.WriteString(key + " " + value[0] + " " + value[1] + " " + value[2])
+		_, err := writer.WriteString(key + " " + value[0] + " " + value[1] + " " + value[2] + "\n")
 		if err != nil {
 			return err
 		}
@@ -170,71 +183,121 @@ func getInfo(name string) (string, string, string, error) {
 }
 
 func handleConnection(conn net.Conn) {
+	reset := false
 	defer conn.Close()
 
 	buffer := make([]byte, 100)
 	n, _ := conn.Read(buffer)
+	fmt.Println(string(buffer[:n]))
+
 	s := string(buffer[:n])
-	fmt.Println(s[0])
-	if s[0] == '0' {
-	}
+	name := strings.Split(string(s), " ")[1]
 	switch s[0] {
 	case '0': // reg
-		fmt.Println("kekekek")
-
 		err := addUser(strings.Split(s[2:], " "))
 		if err != nil {
 			log.Fatal(err)
 		}
 	case '1': // reset
-
+		reset = true
+		fallthrough
 	case '2': // auth
 		hash, count, seed, err := getInfo(s)
 		if err != nil {
-			log.Fatal(err)
+			// log.Fatal(err)
 		}
 
-		conn.Write([]byte(count + " " + seed))
+		err = checkUser(name)
+
+		if err != nil {
+			fmt.Print(11)
+			conn.Write([]byte("unreg" + " " + "Пользователь с таким именем не зарегистрирован!!!"))
+
+		} else {
+
+			fmt.Print(22)
+
+			conn.Write([]byte(count + " " + seed))
+		}
 
 		buffer := make([]byte, 20)
 		n, _ := conn.Read(buffer)
-
 		newHash := hashPS(string(buffer[:n]), seed, 1)
-		fmt.Println(hash, newHash)
-		// fmt.Println(string(buffer), n)
 		if hash == newHash {
-			err = updateHashCount("artyom", string(buffer[:n]))
-			fmt.Println(string(buffer))
+
+			err = updateHashCount(name, string(buffer[:n]), conn)
 
 			if err != nil {
 				log.Fatal(err)
 				return
 			}
-			fmt.Println("Auth Success")
+			// fmt.Println("Auth Success")
+			conn.Write([]byte("Auth Success"))
+
+			if reset {
+				deleteUser(name)
+				fmt.Println(strings.Split(s[2:], " "))
+				err := addUser(strings.Split(s[2:], " "))
+				if err != nil {
+					log.Fatal(err)
+				}
+			}
 		} else {
-			fmt.Println("Auth unSuccess")
+			conn.Write([]byte("Auth Unsuccess"))
 		}
-
-		// fmt.Println(strings.Split(s[2:], " "))
-
 	default:
 		fmt.Println("Errors something")
 	}
+}
 
-	// user := strings.Split(string(buffer[:n]), " ")
+func deleteUser(name string) error {
+	file, err := os.Open("data.csv")
+	if err != nil {
+		return err
+	}
 
-	// err := checkUser(user[1])
+	defer file.Close()
 
-	// if err != nil {
-	// 	fmt.Println("User not found")
-	// 	err := addUser(user)
-	// 	if err != nil {
-	// 		log.Fatal(err)
-	// 	}
-	// } else {
-	// 	fmt.Println("User found")
+	maps := make(map[string][]string, 0)
+
+	scanner := bufio.NewScanner(file)
+	for scanner.Scan() {
+		row := strings.Split(scanner.Text(), " ")
+		maps[row[0]] = row[1:]
+	}
+
+	_, exist := maps[name]
+
+	if !exist {
+		return errors.New("El not found")
+	}
+
+	// for key, val := range maps{
+	// 	fmt.Println(key, val)
 	// }
 
+	delete(maps, name)
+
+	// for key, val := range maps{
+	// 	fmt.Println(key, val)
+	// }
+
+	file, err = os.Create("data.csv")
+	if err != nil {
+		log.Fatal(err)
+	}
+
+	writer := bufio.NewWriter(file)
+
+	for key, value := range maps {
+		_, err := writer.WriteString(key + " " + value[0] + " " + value[1] + " " + value[2] + "\n")
+		if err != nil {
+			return err
+		}
+
+	}
+
+	return writer.Flush()
 }
 
 func main() {
