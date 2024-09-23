@@ -11,24 +11,24 @@ import (
 	"strings"
 )
 
-// func parsArg() string {
-// 	path := os.Args
-
-// 	return path[1] + " " + path[2] + " " + path[3] + " " + path[4]
-// }
 
 func hashPS(str, seed string, i int64) string {
 	var result string
+
 	for ; i > 0; i-- {
 		h := md5.New()
 		h.Write([]byte(str + seed))
-		// fmt.Println([]byte(str+seed), str+seed)
+		hash := h.Sum(nil)
 
-		hash := h.Sum(nil)[:8]
-		result = hex.EncodeToString(hash)
+		xorResult := make([]byte, 8)
+		for j := 0; j < 4; j++ {
+			xorResult[j] = hash[j] ^ hash[j+8]     // Первая часть ^ Третья часть
+			xorResult[j+4] = hash[j+4] ^ hash[j+12] // Вторая часть ^ Четвертая часть
+		}
+		result = hex.EncodeToString(xorResult)
 		str = result
 	}
-	// fmt.Println("i = ", i)
+	fmt.Println("i = ", i)
 	return result //64 бит
 }
 
@@ -98,8 +98,6 @@ func main() {
 
 			num, _ := strconv.Atoi(strings.Split(string(buff), " ")[0])
 			h := hashPS(passwd, strings.Split(string(buff[:n]), " ")[1], int64(num))
-			// fmt.Println(num, h)
-			// fmt.Println(h)
 
 			conn.Write([]byte(h))
 			n, _ = conn.Read(buff[:])
@@ -109,5 +107,4 @@ func main() {
 	default:
 		fmt.Println("Errors arg...")
 	}
-	// conn.Write([]byte(path))
 }
