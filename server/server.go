@@ -73,11 +73,16 @@ func hashPS(str, seed string, i int64) string {
 	for ; i > 0; i-- {
 		h := md5.New()
 		h.Write([]byte(str + seed))
-		hash := h.Sum(nil)[:8]
-		result = hex.EncodeToString(hash)
+		hash := h.Sum(nil)
+
+		xorResult := make([]byte, 8)
+		for j := 0; j < 4; j++ {
+			xorResult[j] = hash[j] ^ hash[j+8]     // Первая часть ^ Третья часть
+			xorResult[j+4] = hash[j+4] ^ hash[j+12] // Вторая часть ^ Четвертая часть
+		}
+		result = hex.EncodeToString(xorResult)
 		str = result
 	}
-	fmt.Println("i = ", i)
 	return result //64 бит
 }
 
@@ -97,6 +102,7 @@ func addUser(user []string) error {
 	if err != nil {
 		return err
 	}
+	fmt.Println(user[0]," -- Пользователь добавлен")
 
 	return nil
 }
@@ -119,31 +125,18 @@ func updateHashCount(username, hash string, conn net.Conn) error {
 
 	value, exist := maps[username]
 
-	// if value[2] == "0"{//delete user
-	// 	delete(maps, username)
-	// }
-
-	// fmt.Println(maps, 	username, value)
-
 	if !exist {
 		return errors.New("El not found")
 	}
 
-	fmt.Println(value)
-
 	value[0] = hash
 	num, _ := strconv.Atoi(value[1])
 	if num == 1 {
-		// fmt.Println("Вам нужно пройти регистрацию еще раз")
-		conn.Write([]byte("ВХод выполнен успешно! N.B: Чтобы войти в следующий раз - зарегистрируйтесь"))
+		conn.Write([]byte("Вход выполнен успешно! N.B: Чтобы войти в следующий раз - зарегистрируйтесь"))
 		delete(maps, username)
 	} else {
 		value[1] = strconv.Itoa(num - 1)
 	}
-
-	// for key, value := range maps {
-	// 	fmt.Println(key, value, len(value))
-	// }
 
 	file, err = os.Create("data.csv")
 	if err != nil {
@@ -159,7 +152,6 @@ func updateHashCount(username, hash string, conn net.Conn) error {
 		}
 
 	}
-
 	return writer.Flush()
 }
 
@@ -188,15 +180,20 @@ func handleConnection(conn net.Conn) {
 
 	buffer := make([]byte, 100)
 	n, _ := conn.Read(buffer)
-	fmt.Println(string(buffer[:n]))
 
 	s := string(buffer[:n])
 	name := strings.Split(string(s), " ")[1]
 	switch s[0] {
 	case '0': // reg
-		err := addUser(strings.Split(s[2:], " "))
-		if err != nil {
-			log.Fatal(err)
+		err1 := checkUser(name)
+
+		if err1 == nil {
+			fmt.Println("unreg" + " " + "Пользователь с таким именем уже зарегистрирован!!!")
+		} else {
+			err := addUser(strings.Split(s[2:], " "))
+			if err != nil {
+				log.Fatal(err)
+			}
 		}
 	case '1': // reset
 		reset = true
@@ -210,12 +207,9 @@ func handleConnection(conn net.Conn) {
 		err = checkUser(name)
 
 		if err != nil {
-			fmt.Print(11)
 			conn.Write([]byte("unreg" + " " + "Пользователь с таким именем не зарегистрирован!!!"))
 
 		} else {
-
-			fmt.Print(22)
 
 			conn.Write([]byte(count + " " + seed))
 		}
@@ -231,19 +225,20 @@ func handleConnection(conn net.Conn) {
 				log.Fatal(err)
 				return
 			}
-			// fmt.Println("Auth Success")
 			conn.Write([]byte("Auth Success"))
+			fmt.Println(name, " -- Пользователь успешно авторизован")
 
 			if reset {
 				deleteUser(name)
-				fmt.Println(strings.Split(s[2:], " "))
 				err := addUser(strings.Split(s[2:], " "))
+				fmt.Println(name, " -- Пользователь успешно сбросил пароль")
 				if err != nil {
 					log.Fatal(err)
 				}
 			}
 		} else {
 			conn.Write([]byte("Auth Unsuccess"))
+			fmt.Println(name, " -- Неуспешная попытка аутентификации")
 		}
 	default:
 		fmt.Println("Errors something")
@@ -272,15 +267,7 @@ func deleteUser(name string) error {
 		return errors.New("El not found")
 	}
 
-	// for key, val := range maps{
-	// 	fmt.Println(key, val)
-	// }
-
 	delete(maps, name)
-
-	// for key, val := range maps{
-	// 	fmt.Println(key, val)
-	// }
 
 	file, err = os.Create("data.csv")
 	if err != nil {
@@ -296,7 +283,7 @@ func deleteUser(name string) error {
 		}
 
 	}
-
+	fmt.Println(name, " -- Пользователь успешно удален")
 	return writer.Flush()
 }
 
